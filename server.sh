@@ -68,12 +68,12 @@ pause(){
         stop
 
         # Give the server a moment to stop
-        sleep 10
+        sleep 5
 
         # Start ncat and save its pid so we can kill it later, for freeing the port
         # Use a & so it runs in the background, releasing the terminal or cron (if thats a thing)
         # Upon a connect, ncat will exit by sending "", after which the server starts
-        (echo "" | $(ncat -l 25565 & echo $! > $PIDFILE) > /dev/null && rm $PIDFILE && start) &
+        (echo "" | $(ncat -l 25565 & echo $! > $PIDFILE) > /dev/null; rm $PIDFILE && start) &
     fi
 
     return 0
