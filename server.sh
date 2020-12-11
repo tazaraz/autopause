@@ -3,7 +3,7 @@
 # Altered to own use
 # All rights reserved
 
-PIDFILE="server.pid"
+PIDFILE="pause.pid"
 SERVICE="minecraft"
 BINARY=/usr/bin/screen
 PARAMETERS="-DmS ${SERVICE} java -Xms1G -Xmx5G -jar /home/games/minecraft/forge.jar nogui"
@@ -11,8 +11,13 @@ PARAMETERS="-DmS ${SERVICE} java -Xms1G -Xmx5G -jar /home/games/minecraft/forge.
 
 start() {
     # No server running at all
-    if [ ! -f $PIDFILE ]; then
-        echo "Server running" > $PIDFILE
+    if screen -list | grep -q "$SERVICE"; then
+        # The server is paused, kill the waiting process
+        if [ -f $PIDFILE ]; then
+            kill $(cat $PIDFILE)
+            rm $PIDFILE
+        fi
+
         $BINARY $PARAMETERS &
 
         if [ $? -ne 0 ]; then
@@ -24,7 +29,7 @@ start() {
         return 0
 
     # The server is running
-    elif [ "$(cat $PIDFILE)" = "Server running" ]; then
+    elif ! screen -list | grep -q "$SERVICE"; then
         echo "Server already running"
         return 1
 
@@ -37,19 +42,17 @@ start() {
 }
 
 stop() {
-    # There is something active
-    if [ -f $PIDFILE ]; then
-        # The server is running
-        if [ "$(cat $PIDFILE)" = "Server running" ]; then
-            echo "Stopping Minecraft Server"
-            $BINARY -p 0 -S $SERVICE -X eval 'stuff "save-all"\015'
-            $BINARY -p 0 -S $SERVICE -X eval 'stuff "stop"\015'
-            rm $PIDFILE
+    # If the server is running
+    if ! screen -list | grep -q "$SERVICE"; then
+        echo "Stopping Minecraft Server"
+        $BINARY -p 0 -S $SERVICE -X eval 'stuff "save-all"\015'
+        $BINARY -p 0 -S $SERVICE -X eval 'stuff "stop"\015'
+        rm $PIDFILE
 
-        # The server is paused, kill the waiting process
-        else
-            kill $(cat $PIDFILE)
-        fi
+    # The server is paused, kill the waiting process
+    elif [ -f $PIDFILE ]; then
+        kill $(cat $PIDFILE)
+        rm $PIDFILE
     else
         echo "No server running"
         return 1
@@ -60,7 +63,7 @@ stop() {
 
 pause(){
     # If it is the server running
-    if [ -f $PIDFILE ] && [ "$(cat $PIDFILE)" = "Server running" ] ; then
+    if ! screen -list | grep -q "$SERVICE" ; then
         stop
         sleep 10
 
