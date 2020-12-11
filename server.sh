@@ -1,9 +1,13 @@
 #!/bin/sh
+# 0: Do not restart if stopped. 1: Please do restart if somehow stopped.
+RESTART_IF_STOPPED=0
+# Add any command line parameters you want to pass here
+PARAMETERS="-DmS ${SERVICE} java -Xms1G -Xmx5G -jar /PATH/TO/forge.jar nogui"
+
 PIDFILE="pause.pid"
 SERVICE="minecraft"
+PORT=25565
 BINARY=/usr/bin/screen
-PARAMETERS="-DmS ${SERVICE} java -Xms1G -Xmx5G -jar /home/games/minecraft/forge.jar nogui"
-# add any command line parameters you want to pass here
 
 start() {
     # If the server is not running
@@ -73,28 +77,33 @@ pause(){
         # Start ncat and save its pid so we can kill it later, for freeing the port
         # Use a & so it runs in the background, releasing the terminal or cron (if thats a thing)
         # Upon a connect, ncat will exit by sending "", after which the server starts
-        (echo "" | $(ncat -l 25565 & echo $! > $PIDFILE) > /dev/null; rm $PIDFILE && start) &
+        (echo "" | $(ncat -l $PORT & echo $! > $PIDFILE) > /dev/null; rm $PIDFILE && start) &
     fi
 
     return 0
 }
 
-try_stop(){
-    $BINARY -p 0 -S $SERVICE -X eval 'stuff "list\015"'
+try_pause(){
+    # If the server is not running and we are note waiting for a new connection
+    if [ $RESTART_IF_STOPPED -eq 1 ] && [ ! -f $PIDFILE ] && ! screen -list | grep -q "$SERVICE"; then
+        start
+    else
+        $BINARY -p 0 -S $SERVICE -X eval 'stuff "list\015"'
 
-    # There should never be "There are 0/20 players online:"
-    # because a new latest.log will be clean when restarting
-    online="$(grep -n "There are 0/20 players online:" logs/latest.log)"
+        # There should never be "There are 0/20 players online:"
+        # because a new latest.log will be clean when restarting
+        online="$(grep -n "There are 0/20 players online:" logs/latest.log)"
 
-    # If we did notice no one is online, pause
-    if [ $online = "" ]; then
-        pause
+        # If we did notice no one is online, pause
+        if [ "$online" = "" ]; then
+            pause
+        fi
     fi
 
     return 0
 }
 
-# Change directory to the scripts location, prevents a bug when using as service
+# Change directory to the real location, in case when using a symlink
 cd $(dirname $([ -x "$(command -v realpath)" ] && realpath "$0" || readlink -f "$0"))
 
 case "$1" in
@@ -114,6 +123,11 @@ pause)
 restart)
         shift
         stop && (start "$@" "$PARAMETERS")
+        exit $?
+        ;;
+try_pause)
+        shift
+        try_pause
         exit $?
         ;;
 *)
