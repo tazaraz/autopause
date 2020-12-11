@@ -45,7 +45,6 @@ stop() {
         echo "Stopping Minecraft Server"
         $BINARY -p 0 -S $SERVICE -X eval 'stuff "save-all"\015'
         $BINARY -p 0 -S $SERVICE -X eval 'stuff "stop"\015'
-        rm $PIDFILE
 
     # The server is paused, kill the waiting process
     elif [ -f $PIDFILE ]; then
