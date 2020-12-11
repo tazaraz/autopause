@@ -17,20 +17,22 @@ start() {
 
         if [ $? -ne 0 ]; then
             echo "Minecraft server could not start"
-            return 4
+            return 1
         fi
 
         echo "Server started"
+        return 0
 
     # The server is running
-    elif [ $(cat $PIDFILE) = "Server running" ]; then
+    elif [ "$(cat $PIDFILE)" = "Server running" ]; then
         echo "Server already running"
+        return 1
 
     # The server is paused, kill the waiting process and restart
     else
         kill $(cat $PIDFILE)
         rm $PIDFILE
-        start()
+        start
     fi
 }
 
@@ -38,8 +40,8 @@ stop() {
     # There is something active
     if [ -f $PIDFILE ]; then
         # The server is running
-        if [ $(cat $PIDFILE) = "Server running" ]; then
-            echo -n "Stopping Minecraft Server"
+        if [ "$(cat $PIDFILE)" = "Server running" ]; then
+            echo "Stopping Minecraft Server"
             $BINARY -p 0 -S $SERVICE -X eval 'stuff "save-all"\015'
             $BINARY -p 0 -S $SERVICE -X eval 'stuff "stop"\015'
             rm $PIDFILE
@@ -50,19 +52,27 @@ stop() {
         fi
     else
         echo "No server running"
+        return 1
     fi
+
     return 0
 }
 
 pause(){
-    # Stop the server
-    stop()
-    # Upon a connect, ncat will exit by sending "", after which the server starts
-    echo "" | ncat -l 25565 && rm $PIDFILE && start() &
+    # If it is the server running
+    if [ -f $PIDFILE ] && [ "$(cat $PIDFILE)" = "Server running" ] ; then
+        stop
+        sleep 10
 
-    # We move the previous command to the background
-    # and save the pid of the whole command
-    echo $! > $PIDFILE
+        # Upon a connect, ncat will exit by sending "", after which the server starts
+        echo "" | ncat -l 25565 > /dev/null && rm $PIDFILE && start &
+
+        # We move the previous command to the background
+        # and save the pid of the whole command
+        echo $! > $PIDFILE
+    fi
+
+    return 0
 }
 
 try_stop(){
@@ -72,8 +82,10 @@ try_stop(){
     online="$(grep -n "There are 0/20 players online:" logs/latest.log)"
 
     if [ $online = "" ]; then
-        pause()
+        pause
     fi
+
+    return 0
 }
 
 # change directory to the scripts location
