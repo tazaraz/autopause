@@ -1,13 +1,16 @@
 #!/bin/sh
 # 0: Do not restart if stopped. 1: Please do restart if somehow stopped.
 RESTART_IF_STOPPED=0
-# Add any command line parameters you want to pass here
-PARAMETERS="-DmS ${SERVICE} java -Xms1G -Xmx5G -jar /PATH/TO/forge.jar nogui"
+
+OPTIMALISATIONS="-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.new.flags=true"
 
 PIDFILE="pause.pid"
 SERVICE="minecraft"
 PORT=25565
 BINARY=/usr/bin/screen
+
+# Add any command line parameters you want to pass here
+PARAMETERS="-DmS ${SERVICE} java -Xms5G -Xmx5G ${OPTIMALISATIONS} -jar /home/games/minecraft/forge.jar nogui"
 
 start() {
     # If the server is not running
@@ -47,7 +50,6 @@ stop() {
     # If the server is running
     if screen -list | grep -q "$SERVICE"; then
         echo "Stopping Minecraft Server"
-        $BINARY -p 0 -S $SERVICE -X eval 'stuff "save-all"\015'
         $BINARY -p 0 -S $SERVICE -X eval 'stuff "stop"\015'
 
     # The server is paused, kill the waiting process
@@ -92,7 +94,7 @@ try_pause(){
 
         # There should never be "There are 0/20 players online:"
         # because a new latest.log will be clean when restarting
-        online="$(grep -n "There are 0/20 players online:" logs/latest.log)"
+        online="$(grep -n "There are 0/[0-9]* players online:" logs/latest.log)"
 
         # If we did notice no one is online, pause
         if [ "$online" = "" ]; then
