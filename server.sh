@@ -2,19 +2,32 @@
 # 0: Do not restart if stopped. 1: Please do restart if somehow stopped.
 RESTART_IF_STOPPED=0
 
-OPTIMALISATIONS="-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.new.flags=true"
+PORT=0
+NAME=""
+EXECUTE=""
 
 PIDFILE="pause.pid"
-SERVICE="minecraft"
-PORT=25565
-BINARY=/usr/bin/screen
+BINARY="/usr/bin/screen -DmS ${EXECUTE}"
 
-# Add any command line parameters you want to pass here
-PARAMETERS="-DmS ${SERVICE} java -Xms5G -Xmx5G ${OPTIMALISATIONS} -jar /home/games/minecraft/forge.jar nogui"
+source "service.cfg"
+
+assert_vars() {
+    # Check if the required variables have been set
+    FAILED=0
+
+    # Set the binary default value
+    if [ "$PORT" -eq 0 ]; then FAILED=1; echo "Variable PORT must be set"; fi
+    if [ -z "$NAME" ];    then FAILED=1; echo "Variable NAME must be set"; fi
+    if [ -z "$EXECUTE" ]; then FAILED=1; echo "Variable EXECUTE must be set"; fi
+
+    if [ "$FAILED" -eq 1 ]; then exit 1; fi
+}
 
 start() {
+    assert_vars
+
     # If the server is not running
-    if ! screen -list | grep -q "$SERVICE"; then
+    if ! screen -list | grep -q "$NAME"; then
         # The server is paused, kill the waiting process
         if [ -f $PIDFILE ]; then
             kill $(cat $PIDFILE)
@@ -26,7 +39,7 @@ start() {
 
         # If screen hates us
         if [ $? -ne 0 ]; then
-            echo "Minecraft server could not start"
+            echo "Server could not start"
             return 1
         fi
 
@@ -34,23 +47,26 @@ start() {
         return 0
 
     # The server is running
-    elif ! screen -list | grep -q "$SERVICE"; then
+    elif ! screen -list | grep -q "$NAME"; then
         echo "Server already running"
         return 1
 
     # The server is paused, kill the waiting process and restart
     else
         # Killing the pause restarts the server
+        echo "Server was paused, restarting"
         kill $(cat $PIDFILE)
         rm $PIDFILE
     fi
 }
 
 stop() {
+    assert_vars
+
     # If the server is running
-    if screen -list | grep -q "$SERVICE"; then
-        echo "Stopping Minecraft Server"
-        $BINARY -p 0 -S $SERVICE -X eval 'stuff "stop"\015'
+    if screen -list | grep -q "$NAME"; then
+        echo "Stopping server"
+        $BINARY -p 0 -S $NAME -X eval 'stuff "stop"\015'
 
     # The server is paused, kill the waiting process
     elif [ -f $PIDFILE ]; then
@@ -59,7 +75,7 @@ stop() {
 
         # Killing the pause restarts the server, so we need to stop it again
         # This closes the screen session mercilessly, otherwise we need to wait before the server is up again
-        screen -p 0 -S $SERVICE -X quit
+        screen -p 0 -S $NAME -X quit
     else
         echo "No server running"
         return 1
@@ -69,12 +85,14 @@ stop() {
 }
 
 pause(){
+    assert_vars
+
     # If it is the server running
-    if screen -list | grep -q "$SERVICE" ; then
+    if screen -list | grep -q "$NAME" ; then
         stop
 
         # Give the server a moment to stop
-        sleep 5
+        sleep 3
 
         # Start ncat and save its pid so we can kill it later, for freeing the port
         # Use a & so it runs in the background, releasing the terminal or cron (if thats a thing)
@@ -86,18 +104,21 @@ pause(){
 }
 
 try_pause(){
+    assert_vars
+
     # If the server is not running and we are note waiting for a new connection
-    if [ $RESTART_IF_STOPPED -eq 1 ] && [ ! -f $PIDFILE ] && ! screen -list | grep -q "$SERVICE"; then
+    if [ $RESTART_IF_STOPPED -eq 1 ] && [ ! -f $PIDFILE ] && ! screen -list | grep -q "$NAME"; then
         start
     else
-        $BINARY -p 0 -S $SERVICE -X eval 'stuff "list\015"'
+        $BINARY -p 0 -S $NAME -X eval 'stuff "list\015"'
 
-        # There should never be "There are 0/20 players online:"
-        # because a new latest.log will be clean when restarting
-        online="$(grep -n "There are 0/[0-9]* players online:" logs/latest.log)"
+        # The line directly after the /list commond should be an amount, which
+        # can only once per instance be 0. This prevents stopping the server when
+        # someone, instead of the server, does a /list or says "There are 0"
+        online="$(grep -n "There are 0" logs/latest.log | tail -1)"
 
         # If we did notice no one is online, pause
-        if [ "$online" = "" ]; then
+        if [ "$online" != "" ]; then
             pause
         fi
     fi
