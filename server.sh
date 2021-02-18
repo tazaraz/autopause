@@ -97,7 +97,7 @@ pause(){
         # Start ncat and save its pid so we can kill it later, for freeing the port
         # Use a & so it runs in the background, releasing the terminal or cron (if thats a thing)
         # Upon a connect, ncat will exit by sending "", after which the server starts
-        (echo "" | $(ncat -l $PORT & echo $! > $PIDFILE) > /dev/null; rm $PIDFILE && start) &
+        (echo "" | $(ncat -l $PORT & echo $! > $PIDFILE) > ./connect.ncat.log; rm $PIDFILE && start) &
     fi
 
     return 0
@@ -132,7 +132,7 @@ cd $(dirname $([ -x "$(command -v realpath)" ] && realpath "$0" || readlink -f "
 case "$1" in
 start)
         shift
-        start "$@" "$PARAMETERS"
+        start
         exit $?
         ;;
 stop)
@@ -145,7 +145,7 @@ pause)
         ;;
 restart)
         shift
-        stop && (start "$@" "$PARAMETERS")
+        stop; start
         exit $?
         ;;
 try_pause)
